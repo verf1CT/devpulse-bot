@@ -198,6 +198,41 @@ async def cmd_graph(message: types.Message):
     photo = BufferedInputFile(buf.read(), filename="graph.png")
     await message.answer_photo(photo, caption=f"📊 Growth history for {repo}")
 
+import google.generativeai as genai
+
+@dp.message(Command("summary"))
+async def cmd_summary(message: types.Message):
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer("Usage: /summary <owner/repo>")
+        return
+    
+    repo = parts[1]
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key or gemini_key == "your_gemini_api_key_here":
+        await message.answer("⚠️ GEMINI_API_KEY is not configured.")
+        return
+        
+    await message.answer(f"🧠 Generating AI summary for {repo}...")
+    
+    async with aiohttp.ClientSession() as session:
+        url = f"https://api.github.com/repos/{repo}/commits"
+        async with session.get(url) as response:
+            if response.status != 200:
+                await message.answer(f"⚠️ Could not fetch commits for `{repo}`", parse_mode="Markdown")
+                return
+            commits = await response.json()
+            commits = commits[:10] # get last 10
+            
+    commit_messages = [c['commit']['message'] for c in commits]
+    prompt = f"Summarize these recent git commits in a friendly, concise paragraph:\n\n" + "\n".join(commit_messages)
+    
+    genai.configure(api_key=gemini_key)
+    model = genai.GenerativeModel('gemini-pro')
+    response = model.generate_content(prompt)
+    
+    await message.answer(f"✨ **AI Summary for {repo}:**\n{response.text}", parse_mode="Markdown")
+
 async def main():
     print("Initializing database...")
     await init_db()
